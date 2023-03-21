@@ -1,6 +1,6 @@
 requests==2.22.0
 six==1.13.0
-DataUtils==1.0.3
+# DataUtils==1.0.3
 numpy==1.18.1
 pytorch_transformers==1.2.0
 seqeval==0.0.12

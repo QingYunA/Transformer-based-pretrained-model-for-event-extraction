@@ -239,7 +239,7 @@ def train(model, iterator, optimizer, hp):
     # arguments_y_2d：输入CRF的标签数据[dim0, seq_len]
     # argument_hat_1d: CRF计算结果
     # argument_hat_2d：根据argument_keys和argument_hat_1d写成字典格式
-    #
+    #v
     # 触发词
     # trigger_hat_2d：CRF预测触发词
     # triggers_y_2d：正确触发词
@@ -543,33 +543,33 @@ if __name__ == "__main__":
     _, _, argument_f1_test = eval(model, test_iter, os.path.join(hp.logdir, '0') + '_test')
     best_f1 = max(0, argument_f1_test)
     no_gain_rc = 0  #效果不增加代数
-    for epoch in range(1, hp.n_epochs + 1):
-        train(model, train_iter, optimizer, hp)
+    # for epoch in range(1, hp.n_epochs + 1):
+    #     train(model, train_iter, optimizer, hp)
 
-        fname = os.path.join(hp.logdir, str(epoch))
+    #     fname = os.path.join(hp.logdir, str(epoch))
 
-        print(f"=========eval dev at epoch={epoch}=========")
-        metric_dev, trigger_f1_dev, argument_f1_dev = eval(model, dev_iter, fname + '_dev')
+    #     print(f"=========eval dev at epoch={epoch}=========")
+    #     metric_dev, trigger_f1_dev, argument_f1_dev = eval(model, dev_iter, fname + '_dev')
 
-        print(f"=========eval test at epoch={epoch}=========")
-        metric_test, trigger_f1_test, argument_f1_test = eval(model, test_iter, fname + '_test')
+    #     print(f"=========eval test at epoch={epoch}=========")
+    #     metric_test, trigger_f1_test, argument_f1_test = eval(model, test_iter, fname + '_test')
 
-        if hp.telegram_bot_token:
-            report_to_telegram('[epoch {}] dev\n{}'.format(epoch, metric_dev), hp.telegram_bot_token,
-                               hp.telegram_chat_id)
-            report_to_telegram('[epoch {}] test\n{}'.format(epoch, metric_test), hp.telegram_bot_token,
-                               hp.telegram_chat_id)
+    #     if hp.telegram_bot_token:
+    #         report_to_telegram('[epoch {}] dev\n{}'.format(epoch, metric_dev), hp.telegram_bot_token,
+    #                            hp.telegram_chat_id)
+    #         report_to_telegram('[epoch {}] test\n{}'.format(epoch, metric_test), hp.telegram_bot_token,
+    #                            hp.telegram_chat_id)
 
-        if argument_f1_test > best_f1:
-            print("角色词 F1 值由 {:.3f} 更新至 {:.3f} ".format(best_f1, argument_f1_test))
-            best_f1 = argument_f1_test
-            print("=======保存模型=======")
-            torch.save(model, hp.model_path)
-            no_gain_rc = 0
-        else:
-            no_gain_rc = no_gain_rc + 1
+    #     if argument_f1_test > best_f1:
+    #         print("角色词 F1 值由 {:.3f} 更新至 {:.3f} ".format(best_f1, argument_f1_test))
+    #         best_f1 = argument_f1_test
+    #         print("=======保存模型=======")
+    #         torch.save(model, hp.model_path)
+    #         no_gain_rc = 0
+    #     else:
+    #         no_gain_rc = no_gain_rc + 1
 
-        ## 提前终止
-        if no_gain_rc > hp.early_stop:
-            print("连续{}个epoch没有提升，在epoch={}提前终止".format(no_gain_rc, epoch))
-            break
+    #     ## 提前终止
+    #     if no_gain_rc > hp.early_stop:
+    #         print("连续{}个epoch没有提升，在epoch={}提前终止".format(no_gain_rc, epoch))
+    #         break

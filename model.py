@@ -12,7 +12,7 @@ import numpy as np
 # from pytorch_pretrained_bert import BertModel
 # from transformers import BertModel
 
-from consts import NONE,TRIGGERS, event_cls
+from consts import NONE, TRIGGERS, event_cls
 from utils import find_triggers, find_argument
 from migration_model.models.CRF import CRF
 
@@ -33,10 +33,19 @@ from migration_model.enet.models.EmbeddingLayer import EmbeddingLayer, MultiLabe
 # from migration_model.text_cls_models.TextCNN import NgramCNN
 
 
-
 class Net(nn.Module):
-    def __init__(self, trigger_size=None, entity_size=None, all_postags=None, PreModel=None, hyper_para =None, idx2trigger = None, postag_embedding_dim=50,
-                 argument_size=None, entity_embedding_dim=50, device=torch.device("cuda")):
+
+    def __init__(self,
+                 trigger_size=None,
+                 entity_size=None,
+                 all_postags=None,
+                 PreModel=None,
+                 hyper_para=None,
+                 idx2trigger=None,
+                 postag_embedding_dim=50,
+                 argument_size=None,
+                 entity_embedding_dim=50,
+                 device=torch.device("cuda")):
         super().__init__()
         ## PreTrainModel
 
@@ -59,8 +68,6 @@ class Net(nn.Module):
             nn.Linear(self.hidden_size, trigger_size + 2, bias=True),
         )
 
-
-
         self.device = device
         self.emb = 0  # 一个batch 的嵌入表达初始化
         self.mask = 0
@@ -78,12 +85,13 @@ class Net(nn.Module):
         self.event_cls = event_cls
 
         ## CRF - arugument
-        self.arg_fc = [nn.Linear(self.hidden_size*2+self.tri_embsize+self.pos_embsize,argument_size + 2, bias=True).cuda()
-                       for _ in range(len(self.event_cls))]
+        self.arg_fc = [
+            nn.Linear(self.hidden_size * 2 + self.tri_embsize + self.pos_embsize, argument_size + 2, bias=True).cuda()
+            for _ in range(len(self.event_cls))
+        ]
 
         kwargs_a = dict({'target_size': argument_size, 'device': device})
         self.arg_CRF = [CRF(**kwargs_a) for _ in range(len(self.event_cls))]
-
 
         # Ngramcnn
         # self.NgramCNN = NgramCNN(hidden_size=self.hidden_size)
@@ -106,7 +114,6 @@ class Net(nn.Module):
         #
         #     return x.to(self.device)
 
-
         ## 字符ID [batch_size, seq_length]
         tokens_x_2d = torch.LongTensor(tokens_x_2d).to(self.device)
         ## 触发词标签ID [batch_size, seq_length]
@@ -123,8 +130,6 @@ class Net(nn.Module):
             with torch.no_grad():
                 x_1, _ = self.PreModel(tokens_x_2d)
 
-
-
         batch_size = tokens_x_2d.shape[0]
         SEQ_LEN = x_1.size()[1]
         # [CLS]字符
@@ -136,11 +141,9 @@ class Net(nn.Module):
             ## 切片, 会改变位置 同时去除了[CLS]
             x[i] = torch.index_select(x_1[i], 0, head_indexes_2d[i])
 
-
-
         mask = numpy.zeros(shape=[batch_size, SEQ_LEN], dtype=numpy.uint8)
         for i in range(len(xlen)):
-            mask[i,:xlen[i]] = 1
+            mask[i, :xlen[i]] = 1
         mask = torch.ByteTensor(mask).to(self.device)
 
         self.mask = mask
@@ -150,9 +153,9 @@ class Net(nn.Module):
         ## emb = torch.cat([x,sen_emb,n_gram_emb],dim=-1) #hidden_size*3
         #emb = torch.cat([x, n_gram_emb], dim=-1)  # hidden_size*3
 
-        emb = x # [batch_size, seq_len, hidden_size]
+        emb = x  # [batch_size, seq_len, hidden_size]
         trigger_logits1 = self.tri_fc1(emb)
-        trigger_logits1 = nn.functional.leaky_relu_(trigger_logits1) # x: [batch_size, seq_len, trigger_size + 2 ]
+        trigger_logits1 = nn.functional.leaky_relu_(trigger_logits1)  # x: [batch_size, seq_len, trigger_size + 2 ]
 
         ## tri_CRF1 ##
         trigger_loss = self.tri_CRF1.neg_log_likelihood_loss(feats=trigger_logits1, mask=mask, tags=triggers_y_2d)
@@ -161,9 +164,8 @@ class Net(nn.Module):
         self.emb = emb
         self.tri_result = trigger_hat_2d
 
-        argument_keys = {}# 记录预测出的正确的触发词，对应的正确角色
+        argument_keys = {}  # 记录预测出的正确的触发词，对应的正确角色
         sen_mask_id = []
-
 
         for i in range(batch_size):
             ## 列表 元素格式：[触发词开始位置，触发词结束位置，事件类型（34个）
@@ -175,17 +177,16 @@ class Net(nn.Module):
                 if (t_start, t_end, t_type_str) in arguments_2d[i]['events']:
                     for (a_start, a_end, a_type_idx) in arguments_2d[i]['events'][(t_start, t_end, t_type_str)]:
                         if (i, t_start, t_end, t_type_str) in argument_keys:
-                            argument_keys [(i, t_start, t_end, t_type_str)].append((a_start, a_end, a_type_idx))
+                            argument_keys[(i, t_start, t_end, t_type_str)].append((a_start, a_end, a_type_idx))
                         else:
-                            argument_keys[(i, t_start, t_end, t_type_str)]= []
-                            argument_keys [(i, t_start, t_end, t_type_str)].append((a_start, a_end, a_type_idx))
-                 # else: #当预测触发词是错误的时候
+                            argument_keys[(i, t_start, t_end, t_type_str)] = []
+                            argument_keys[(i, t_start, t_end, t_type_str)].append((a_start, a_end, a_type_idx))
+                # else: #当预测触发词是错误的时候
                 #     argument_keys[(i, t_start, t_end, t_type_str)] = []
         return trigger_loss, triggers_y_2d, trigger_hat_2d, sen_mask_id, argument_keys
 
-
-
     def predict_arguments(self, sen_mask_id, argument_keys, arguments_2d, adjm):
+
         def get_sentence_positional_feature(self, argument_keys, seq_len):
             '''
             :param argument_keys:
@@ -200,8 +201,8 @@ class Net(nn.Module):
                 positions[k, t_end:] = range(max_len, max_len + seq_len - t_end)
 
             positions = torch.LongTensor(positions).to(self.device)
-            positions[positions<0] = 99
-            positions[positions>99] = 99
+            positions[positions < 0] = 99
+            positions[positions > 99] = 99
             y = self.position_embed(positions)
             return y
 
@@ -214,13 +215,13 @@ class Net(nn.Module):
         ## dim0 = 一个batch中 触发词的总数
         dim0 = len(argument_keys)
         # 0："[PAD]"; 1:"O"
-        arguments_y_2d= numpy.zeros([dim0,SEQ_LEN],dtype=numpy.int64)
-        event_index={}
-        for k,trigger in enumerate(argument_keys):
-            ( i, t_start, t_end, t_type_str) = trigger# 0 <= i < batch_size
+        arguments_y_2d = numpy.zeros([dim0, SEQ_LEN], dtype=numpy.int64)
+        event_index = {}
+        for k, trigger in enumerate(argument_keys):
+            (i, t_start, t_end, t_type_str) = trigger  # 0 <= i < batch_size
             ##分类
             flag = 0
-            for jk, event_set in enumerate(self.event_cls):#[set1,set2,set3]
+            for jk, event_set in enumerate(self.event_cls):  #[set1,set2,set3]
                 if t_type_str in event_set:
                     if jk not in event_index:
                         event_index[jk] = []
@@ -230,61 +231,62 @@ class Net(nn.Module):
                     flag = 1
                     break
             if flag == 0:
-                print(t_type_str,"不在事件集合内")
+                print(t_type_str, "不在事件集合内")
 
-            trigger_BERTemb = x[i, t_start:t_end, :self.hidden_size].mean(dim=0)#[hidden_size]
-            trigger_BERTemb = torch.unsqueeze(trigger_BERTemb,dim=0).repeat(SEQ_LEN, 1)  # [SEQ_LEN,hidden_size]
-            eventtype_emb = self.trigger_embed(self.tri_result[i,t_start])#[self.tri_embsize]
-            eventtype_emb = torch.unsqueeze(eventtype_emb,dim=0).repeat(SEQ_LEN, 1)# [SEQ_LEN,tri_embsize]
-            argument_hidden.append(torch.cat([x[i],trigger_BERTemb,eventtype_emb],dim=-1))    # [SEQ_LEN,hidden_size*2+tri_embsize]
+            trigger_BERTemb = x[i, t_start:t_end, :self.hidden_size].mean(dim=0)  #[hidden_size]
+            trigger_BERTemb = torch.unsqueeze(trigger_BERTemb, dim=0).repeat(SEQ_LEN, 1)  # [SEQ_LEN,hidden_size]
+            eventtype_emb = self.trigger_embed(self.tri_result[i, t_start])  #[self.tri_embsize]
+            eventtype_emb = torch.unsqueeze(eventtype_emb, dim=0).repeat(SEQ_LEN, 1)  # [SEQ_LEN,tri_embsize]
+            argument_hidden.append(torch.cat([x[i], trigger_BERTemb, eventtype_emb],
+                                             dim=-1))  # [SEQ_LEN,hidden_size*2+tri_embsize]
 
             mask.append(self.mask[i])
-            arguments_y_2d[k,:sum(self.mask[i].cpu())] = 1
-            if len(argument_keys[trigger])>0:#触发词是正确的设置标签，当是错的时，默认全是O
+            arguments_y_2d[k, :sum(self.mask[i].cpu())] = 1
+            if len(argument_keys[trigger]) > 0:  #触发词是正确的设置标签，当是错的时，默认全是O
                 for (a_start, a_end, a_type_idx) in argument_keys[trigger]:
-                    arguments_y_2d[k, a_start: a_end] = a_type_idx
+                    arguments_y_2d[k, a_start:a_end] = a_type_idx
         argument_hidden = torch.stack(argument_hidden)
 
         sum_idx = 0
         for idx in event_index:
-            event_index[idx] = torch.tensor(event_index[idx]).to(self.device)#list to tensor
+            event_index[idx] = torch.tensor(event_index[idx]).to(self.device)  #list to tensor
             sum_idx = sum_idx + len(event_index[idx])
         # 校验
         if sum_idx != len(argument_keys):
             print("sum_idx 和 len(argument_keys)长度不匹配")
-            print(sum_idx,len(argument_keys))
+            print(sum_idx, len(argument_keys))
             print(event_index)
             print(argument_keys)
 
-
         ## 给argument_hidden加入触发词的位置嵌入
         ## [dim0,seq_len,pos_embsize]
-        pos_emb= get_sentence_positional_feature(self, argument_keys, SEQ_LEN)
+        pos_emb = get_sentence_positional_feature(self, argument_keys, SEQ_LEN)
         ##  [dim0,seq_len, , hidden_size + trigger_embed*2 + pos_embsize]
 
         ##[dim0,seq_len]
-        argument_hidden =torch.cat([argument_hidden, pos_emb],dim=-1)
+        argument_hidden = torch.cat([argument_hidden, pos_emb], dim=-1)
         arguments_y_2d = torch.LongTensor(arguments_y_2d).to(self.device)
         mask = torch.stack(mask).to(self.device)
         ## 初始化
-        argument_hat_1d = torch.LongTensor(np.zeros([dim0,SEQ_LEN])).to(self.device)
+        argument_hat_1d = torch.LongTensor(np.zeros([dim0, SEQ_LEN])).to(self.device)
         argument_loss = 0
         ######### argument CRF #########
         for idx in event_index:
             argument_logits = self.arg_fc[idx](argument_hidden[event_index[idx]].to(self.device))
             argument_logits = nn.functional.leaky_relu_(argument_logits)
-            argument_loss = argument_loss + self.arg_CRF[int(idx)].neg_log_likelihood_loss(feats=argument_logits, mask= mask[event_index[idx]], tags=arguments_y_2d[event_index[idx]])
-            _, argument_hat= self.arg_CRF[int(idx)].forward(feats=argument_logits, mask=mask[event_index[idx]])
+            argument_loss = argument_loss + self.arg_CRF[int(idx)].neg_log_likelihood_loss(
+                feats=argument_logits, mask=mask[event_index[idx]], tags=arguments_y_2d[event_index[idx]])
+            _, argument_hat = self.arg_CRF[int(idx)].forward(feats=argument_logits, mask=mask[event_index[idx]])
             argument_hat_1d[event_index[idx]] = argument_hat
         ###############################
 
         batch_size = len(arguments_2d)
         argument_hat_2d = [{'events': {}} for _ in range(batch_size)]
-        for k,trigger in enumerate(argument_keys):
+        for k, trigger in enumerate(argument_keys):
             (i, st, ed, event_type_str) = trigger
             if (st, ed, event_type_str) not in argument_hat_2d[i]['events']:
                 argument_hat_2d[i]['events'][(st, ed, event_type_str)] = []
-            result= find_argument(argument_hat_1d[k].cpu())
+            result = find_argument(argument_hat_1d[k].cpu())
             for (e_st, e_ed, entity_type) in result:
                 argument_hat_2d[i]['events'][(st, ed, event_type_str)].append((e_st, e_ed, entity_type))
         return argument_loss, arguments_y_2d, argument_hat_1d, argument_hat_2d
@@ -292,10 +294,14 @@ class Net(nn.Module):
 
 # Reused from https://github.com/lx865712528/EMNLP2018-JMEE
 class MultiLabelEmbeddingLayer(nn.Module):
+
     def __init__(self,
-                 num_embeddings=None, embedding_dim=None,
-                 dropout=0.5, padding_idx=0,
-                 max_norm=None, norm_type=2,
+                 num_embeddings=None,
+                 embedding_dim=None,
+                 dropout=0.5,
+                 padding_idx=0,
+                 max_norm=None,
+                 norm_type=2,
                  device=torch.device("cpu")):
         super(MultiLabelEmbeddingLayer, self).__init__()
 
@@ -311,9 +317,10 @@ class MultiLabelEmbeddingLayer(nn.Module):
     def forward(self, x):
         batch_size = len(x)
         seq_len = len(x[0])
-        x = [self.matrix(torch.LongTensor(x[i][j]).to(self.device)).sum(0)
-             for i in range(batch_size)
-             for j in range(seq_len)]
+        x = [
+            self.matrix(torch.LongTensor(x[i][j]).to(self.device)).sum(0) for i in range(batch_size)
+            for j in range(seq_len)
+        ]
         x = torch.stack(x).view(batch_size, seq_len, -1)
 
         if self.dropout is not None:

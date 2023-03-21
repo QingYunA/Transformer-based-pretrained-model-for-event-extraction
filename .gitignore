@@ -1,0 +1,8 @@
+__pycache__/
+
+Transformer-based-pretrained-model-for-event-extraction-master/
+ace_2005_td_v7/
+ace2005-preprocessing/
+logdir/
+data/
+stanford-corenlp-full-2018-10-05
