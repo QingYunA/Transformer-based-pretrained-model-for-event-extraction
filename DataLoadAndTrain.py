@@ -11,12 +11,15 @@ from model import Net
 from utils import calc_metric, find_triggers
 from utils import report_to_telegram
 import warnings
+from torch.utils.tensorboard import SummaryWriter
 
 warnings.filterwarnings('ignore')
 import numpy as np
 
 import json
 import os
+from transformers import BERT_PRETRAINED_CONFIG_ARCHIVE_MAP
+from transformers import ALBERT_PRETRAINED_CONFIG_ARCHIVE_MAP
 from consts import NONE, PAD, CLS, SEP, UNK, TRIGGERS, ARGUMENTS, ENTITIES, POSTAGS
 from utils import build_vocab
 
@@ -28,6 +31,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 # for 10 transformer architectures and 30 pretrained weights.
 #          Model          | Tokenizer          | Pretrained weights shortcut
 MODELS_dict = {
+    'Bert': (BertModel, BertTokenizer, 'bert-base-uncased'),
     'Bert_large': (BertModel, BertTokenizer, 'bert-large-uncased'),
     "Gpt": (OpenAIGPTModel, OpenAIGPTTokenizer, 'openai-gpt'),
     "Gpt2": (GPT2Model, GPT2Tokenizer, 'gpt2'),
@@ -227,7 +231,7 @@ def pad(batch):
 
 
 ## train.py
-def train(model, iterator, optimizer, hp):
+def train(model, iterator, optimizer, hp, writer, epoch, iterations):
     model.train()
 
     words_all, triggers_all, triggers_hat_all, arguments_all, arguments_hat_all = [], [], [], [], []
@@ -239,7 +243,7 @@ def train(model, iterator, optimizer, hp):
     # arguments_y_2d：输入CRF的标签数据[dim0, seq_len]
     # argument_hat_1d: CRF计算结果
     # argument_hat_2d：根据argument_keys和argument_hat_1d写成字典格式
-    #
+    #v
     # 触发词
     # trigger_hat_2d：CRF预测触发词
     # triggers_y_2d：正确触发词
@@ -332,22 +336,40 @@ def train(model, iterator, optimizer, hp):
                     a_start, a_end, a_type_idx = argument
                     arguments_pred.append((ii, t_start, t_end, t_type_str, a_start, a_end, a_type_idx))
 
-        if i % 100 == 0:  # monitoring
-            trigger_p, trigger_r, trigger_f1 = calc_metric(triggers_true, triggers_pred)
-            argument_p, argument_r, argument_f1 = calc_metric(arguments_true, arguments_pred)
-            ## 100step 清零
-            words_all, triggers_all, triggers_hat_all, arguments_all, arguments_hat_all = [], [], [], [], []
-            triggers_true, triggers_pred, arguments_true, arguments_pred = [], [], [], []
-            #########################
-            if len(argument_keys) > 0:
-                print(
-                    "【识别到事件】step: {}, loss: {:.3f}, trigger_loss:{:.3f}, argument_loss:{:.3f}".format(
-                        i, loss.item(), trigger_loss.item(), argument_loss.item()),
-                    '【trigger】 P={:.3f}  R={:.3f}  F1={:.3f}'.format(trigger_p, trigger_r, trigger_f1),
-                    '【argument】 P={:.3f}  R={:.3f}  F1={:.3f}'.format(argument_p, argument_r, argument_f1))
-            else:
-                print("【未识别到事件】step: {}, loss: {:.3f} ".format(i, loss.item()),
-                      '【trigger】 P={:.3f}  R={:.3f}  F1={:.3f}'.format(trigger_p, trigger_r, trigger_f1))
+        # if i % 100 == 0:  # monitoring
+        trigger_p, trigger_r, trigger_f1 = calc_metric(triggers_true, triggers_pred)
+        argument_p, argument_r, argument_f1 = calc_metric(arguments_true, arguments_pred)
+        ## 100step 清零
+        words_all, triggers_all, triggers_hat_all, arguments_all, arguments_hat_all = [], [], [], [], []
+        triggers_true, triggers_pred, arguments_true, arguments_pred = [], [], [], []
+
+        #########################
+        if len(argument_keys) > 0:
+            print(
+                "【识别到事件】step: {}, loss: {:.3f}, trigger_loss:{:.3f}, argument_loss:{:.3f}".format(
+                    i, loss.item(), trigger_loss.item(), argument_loss.item()),
+                '【trigger】 P={:.3f}  R={:.3f}  F1={:.3f}'.format(trigger_p, trigger_r, trigger_f1),
+                '【argument】 P={:.3f}  R={:.3f}  F1={:.3f}'.format(argument_p, argument_r, argument_f1))
+            writer.add_scalar('train/loss', loss.item(), iterations)
+            writer.add_scalar('train/trigger_loss', trigger_loss.item(), iterations)
+            writer.add_scalar('train/argument_loss', argument_loss.item(), iterations)
+            writer.add_scalar('train/trigger_p', trigger_p, iterations)
+            writer.add_scalar('train/trigger_r', trigger_r, iterations)
+            writer.add_scalar('train/trigger_f1', trigger_f1, iterations)
+            writer.add_scalar('train/argument_p', argument_p, iterations)
+            writer.add_scalar('train/argument_r', argument_r, iterations)
+            writer.add_scalar('train/argument_f1', argument_f1, iterations)
+
+        else:
+            print("【未识别到事件】step: {}, loss: {:.3f} ".format(i, loss.item()),
+                  '【trigger】 P={:.3f}  R={:.3f}  F1={:.3f}'.format(trigger_p, trigger_r, trigger_f1))
+            writer.add_scalar('train/loss', loss.item(), iterations)
+            writer.add_scalar('train/trigger_loss', trigger_loss.item(), iterations)
+            writer.add_scalar('train/trigger_p', trigger_p, iterations)
+            writer.add_scalar('train/trigger_r', trigger_r, iterations)
+            writer.add_scalar('train/trigger_f1', trigger_f1, iterations)
+        iterations += 1
+    return iterations
 
 
 def eval(model, iterator, fname):
@@ -477,12 +499,19 @@ def eval(model, iterator, fname):
 
 
 if __name__ == "__main__":
+    hp.model_path = f'./train_log/{hp.PreTrain_Model}/'
+    os.makedirs(hp.model_path, exist_ok=True)
+    hp.model_path += 'latest_model.pt'
+    # print(hp.model_path)
+    hp.logdir = f'./train_log/{hp.PreTrain_Model}/'
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print("=" * 20 + " 超参 " + "=" * 20)
     for para in hp.__dict__:
         print(" " * (20 - len(para)), para, "=", hp.__dict__[para])
     PreModel = MODELS_dict[hp.PreTrain_Model][0].from_pretrained(MODELS_dict[hp.PreTrain_Model][2])
+    #* tensorboard
+    writer = SummaryWriter(hp.logdir)
 
     if os.path.exists(hp.model_path):
         print('=======载入模型=======')
@@ -537,14 +566,15 @@ if __name__ == "__main__":
     if not os.path.exists(hp.logdir):
         os.makedirs(hp.logdir)
 
-    if not os.path.exists(os.path.split(hp.model_path)[0]):
-        os.makedirs(os.path.split(hp.model_path)[0])
+    # if not os.path.exists(os.path.split(hp.model_path)[0]):
+    #     os.makedirs(os.path.split(hp.model_path)[0])
 
     _, _, argument_f1_test = eval(model, test_iter, os.path.join(hp.logdir, '0') + '_test')
     best_f1 = max(0, argument_f1_test)
     no_gain_rc = 0  #效果不增加代数
+    iterations = 0
     for epoch in range(1, hp.n_epochs + 1):
-        train(model, train_iter, optimizer, hp)
+        iterations = train(model, train_iter, optimizer, hp, writer, epoch - 1, iterations)
 
         fname = os.path.join(hp.logdir, str(epoch))
 

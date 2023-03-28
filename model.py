@@ -49,8 +49,8 @@ class Net(nn.Module):
         super().__init__()
         ## PreTrainModel
 
-        self.PreModel = PreModel
         self.hp = hyper_para
+        self.PreModel = PreModel
         self.tri_embsize = 100
         self.pos_embsize = 100
         self.arg_embsize = 100
